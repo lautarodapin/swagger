@@ -3,12 +3,13 @@ import importlib.util
 import inspect
 import json
 import os
+from typing import Literal
 
 import frappe
 from pydantic import BaseModel
 
 
-def find_pydantic_model_in_decorator(node):
+def find_pydantic_model_in_decorator(node, type: Literal["request", "response"]):
     """Find the name of the Pydantic model used in the validate_request decorator.
     
     Args:
@@ -23,7 +24,7 @@ def find_pydantic_model_in_decorator(node):
                 if isinstance(decorator, ast.Call):
                     if (
                         isinstance(decorator.func, ast.Name)
-                        and decorator.func.id == "validate_request"
+                        and decorator.func.id == f"validate_{type}"
                     ):
                         if decorator.args:
                             if isinstance(decorator.args[0], ast.Name):
@@ -74,8 +75,8 @@ def process_function(app_name, module_name, func_name, func, swagger, module):
             return
 
         # Find the Pydantic model used in the validate_request decorator
-        pydantic_model_name = find_pydantic_model_in_decorator(tree)
-
+        pydantic_model_name = find_pydantic_model_in_decorator(tree, 'request')
+        pydantic_response_model_name = find_pydantic_model_in_decorator(tree, 'response')
         # Construct the API path for the function
         path = f"/api/method/{app_name}.api.{module_name}.{func_name}".lower()
 
@@ -126,14 +127,22 @@ def process_function(app_name, module_name, func_name, func, swagger, module):
                             "schema": {"type": param_type},
                         }
                     )
-
-        # Define the response schema
-        responses = {
-            "200": {
-                "description": "Successful response",
-                "content": {"application/json": {"schema": {"type": "object"}}},
+        if pydantic_response_model_name:
+            pydantic_response_model = get_pydantic_model_schema(pydantic_response_model_name, module)
+            responses = {
+                "200": {
+                    "description": "Successful response",
+                    "content": {"application/json": {"schema": pydantic_response_model}},
+                }
             }
-        }
+        else:
+            # Define the response schema
+            responses = {
+                "200": {
+                    "description": "Successful response",
+                    "content": {"application/json": {"schema": {"type": "object"}}},
+                }
+            }
 
         # Assign tags for the Swagger documentation
         tags = [module_name]
