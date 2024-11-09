@@ -11,10 +11,10 @@ from pydantic import BaseModel
 
 def find_pydantic_model_in_decorator(node, type: Literal["request", "response"]):
     """Find the name of the Pydantic model used in the validate_request decorator.
-    
+
     Args:
         node (ast.AST): The AST node representing the function definition.
-    
+
     Returns:
         str: The name of the Pydantic model used in the decorator, if found.
     """
@@ -36,11 +36,11 @@ def find_pydantic_model_in_decorator(node, type: Literal["request", "response"])
 
 def get_pydantic_model_schema(model_name, module):
     """Extract the schema from a Pydantic model.
-    
+
     Args:
         model_name (str): The name of the Pydantic model.
         module (module): The module where the model is defined.
-    
+
     Returns:
         dict: The JSON schema of the Pydantic model, if valid.
     """
@@ -53,7 +53,7 @@ def get_pydantic_model_schema(model_name, module):
 
 def process_function(app_name, module_name, func_name, func, swagger, module):
     """Process each function to update the Swagger paths.
-    
+
     Args:
         app_name (str): The name of the app.
         module_name (str): The name of the module.
@@ -75,8 +75,10 @@ def process_function(app_name, module_name, func_name, func, swagger, module):
             return
 
         # Find the Pydantic model used in the validate_request decorator
-        pydantic_model_name = find_pydantic_model_in_decorator(tree, 'request')
-        pydantic_response_model_name = find_pydantic_model_in_decorator(tree, 'response')
+        pydantic_model_name = find_pydantic_model_in_decorator(tree, "request")
+        pydantic_response_model_name = find_pydantic_model_in_decorator(
+            tree, "response"
+        )
         # Construct the API path for the function
         path = f"/api/method/{app_name}.api.{module_name}.{func_name}".lower()
 
@@ -128,11 +130,26 @@ def process_function(app_name, module_name, func_name, func, swagger, module):
                         }
                     )
         if pydantic_response_model_name:
-            pydantic_response_model = get_pydantic_model_schema(pydantic_response_model_name, module)
+            pydantic_response_model = get_pydantic_model_schema(
+                pydantic_response_model_name, module
+            )
             responses = {
                 "200": {
                     "description": "Successful response",
-                    "content": {"application/json": {"schema": pydantic_response_model}},
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "enum": ["success", "error"],
+                                    },
+                                    "message": {"type": "string", "nullable": True},
+                                    "data": pydantic_response_model,
+                                }
+                            }
+                        }
+                    },
                 }
             }
         else:
@@ -169,10 +186,10 @@ def process_function(app_name, module_name, func_name, func, swagger, module):
 
 def load_module_from_file(file_path):
     """Load a module dynamically from a given file path.
-    
+
     Args:
         file_path (str): The file path of the module.
-    
+
     Returns:
         module: The loaded module.
     """
@@ -186,12 +203,12 @@ def load_module_from_file(file_path):
 @frappe.whitelist(allow_guest=True)
 def generate_swagger_json():
     """Generate Swagger JSON documentation for all API methods.
-    
+
     This function processes all Python files in the `api` directories of installed apps
     to generate a Swagger JSON file that describes the API methods.
     """
     swagger_settings = frappe.get_single("Swagger Settings")
-    
+
     # Initialize the Swagger specification
     swagger = {
         "openapi": "3.0.0",
@@ -231,21 +248,21 @@ def generate_swagger_json():
     for app in frappe.get_installed_apps():
         try:
             api_dir = os.path.join(frappe_bench_dir, "apps", app, app, "api")
-            
+
             # Check if the `api` directory exists
             if os.path.exists(api_dir) and os.path.isdir(api_dir):
                 # Walk through the `api` directory to gather all `.py` files
                 for root, dirs, files in os.walk(api_dir):
                     for file in files:
                         if file.endswith(".py"):
-                            file_paths.append((app,os.path.join(root, file)))
+                            file_paths.append((app, os.path.join(root, file)))
         except Exception as e:
             # Log any errors encountered while processing the app
             frappe.log_error(f"Error processing app '{app}': {str(e)}")
             continue
 
     # Process each Python file found
-    for app,file_path in file_paths:
+    for app, file_path in file_paths:
         try:
             if os.path.isfile(file_path) and app in str(file_path):
                 module = load_module_from_file(file_path)
